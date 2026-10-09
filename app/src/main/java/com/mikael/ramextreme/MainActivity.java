@@ -37,9 +37,10 @@ public class MainActivity extends Activity {
     private TextView memoryText;
     private TextView shizukuText;
     private TextView statusText;
-    private LinearLayout appList;
-    private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton, closeAllButton;
+    private LinearLayout appList, systemAppList;
+    private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton, closeAllButton, closeSelectedSystemButton;
     private final List<CheckBox> appChecks = new ArrayList<>();
+    private final List<CheckBox> systemAppChecks = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
     private final Shizuku.OnRequestPermissionResultListener permissionListener =
@@ -64,6 +65,7 @@ public class MainActivity extends Activity {
         refreshMemory();
         updateShizukuStatus();
         loadUserApps();
+        loadOptionalSystemApps();
     }
 
     private void buildUi() {
@@ -131,6 +133,26 @@ public class MainActivity extends Activity {
         closeAllButton = makeButton("FECHAR TODOS OS APPS DE USUÁRIO + ABRIR FCL");
         closeAllButton.setOnClickListener(v -> confirmCloseAllApps());
         root.addView(closeAllButton, buttonParams());
+
+        TextView advancedSystemTitle = makeText("APPS DO SISTEMA — AVANÇADO", 14,
+                Color.rgb(255, 190, 110));
+        LinearLayout.LayoutParams advancedParams = matchWrap();
+        advancedParams.topMargin = dp(24);
+        advancedParams.bottomMargin = dp(4);
+        root.addView(advancedSystemTitle, advancedParams);
+
+        TextView advancedSystemHint = makeText("Lista filtrada de apps de sistema com ícone de abertura. Nenhum fica marcado automaticamente. Mesmo assim, forçar parada pode quebrar funções temporariamente; componentes essenciais são excluídos da lista.", 12, Color.LTGRAY);
+        root.addView(advancedSystemHint, matchWrap());
+
+        systemAppList = new LinearLayout(this);
+        systemAppList.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams systemListParams = matchWrap();
+        systemListParams.topMargin = dp(8);
+        root.addView(systemAppList, systemListParams);
+
+        closeSelectedSystemButton = makeButton("TENTAR FECHAR SISTEMA SELECIONADO + ABRIR FCL");
+        closeSelectedSystemButton.setOnClickListener(v -> confirmCloseSelectedSystemApps());
+        root.addView(closeSelectedSystemButton, buttonParams());
 
         TextView systemTitle = makeText("AJUSTES DO ANDROID (REVERSÍVEIS)", 14,
                 Color.rgb(151, 245, 174));
@@ -201,6 +223,138 @@ public class MainActivity extends Activity {
             appList.addView(check, matchWrap());
             appChecks.add(check);
         }
+    }
+
+    private boolean isProtectedCorePackage(String pkg) {
+        String[] exact = {
+                "android", "com.android.systemui", "com.android.settings",
+                "com.android.phone", "com.android.server.telecom", "com.android.shell",
+                "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+                "com.android.packageinstaller", "com.android.providers.settings",
+                "com.android.providers.media", "com.android.providers.downloads",
+                "com.android.providers.downloads.ui", "com.android.providers.contacts",
+                "com.android.providers.telephony", "com.android.inputmethod.latin",
+                "com.google.android.gms", "com.google.android.gsf", "com.android.vending",
+                "com.android.bluetooth", "com.android.nfc", "com.android.networkstack",
+                "com.android.documentsui", "com.android.launcher3",
+                "com.sec.android.app.launcher", "com.samsung.android.knox.containercore",
+                "com.samsung.android.app.telephonyui", "com.samsung.android.honeyboard",
+                "com.samsung.android.packageinstaller", "com.samsung.android.sm",
+                "com.samsung.android.lool", "com.android.emergency"
+        };
+        for (String core : exact) if (core.equals(pkg)) return true;
+        String[] protectedPrefixes = {
+                "com.android.providers.", "com.android.server.",
+                "com.android.networkstack.", "com.google.android.modulemetadata",
+                "com.samsung.android.knox.", "com.sec.android.app.SecSetupWizard"
+        };
+        for (String prefix : protectedPrefixes) if (pkg.startsWith(prefix)) return true;
+        return false;
+    }
+
+    private void loadOptionalSystemApps() {
+        systemAppList.removeAllViews();
+        systemAppChecks.clear();
+        PackageManager pm = getPackageManager();
+        List<ApplicationInfo> installed = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+        List<ApplicationInfo> candidates = new ArrayList<>();
+        for (ApplicationInfo app : installed) {
+            if (app.packageName.equals(getPackageName()) || app.packageName.equals(FCL_PACKAGE)) continue;
+            boolean system = (app.flags & ApplicationInfo.FLAG_SYSTEM) != 0
+                    || (app.flags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0;
+            if (!system || isProtectedCorePackage(app.packageName)) continue;
+            if (pm.getLaunchIntentForPackage(app.packageName) == null) continue;
+            candidates.add(app);
+        }
+        Collections.sort(candidates, new Comparator<ApplicationInfo>() {
+            @Override public int compare(ApplicationInfo a, ApplicationInfo b) {
+                return String.valueOf(pm.getApplicationLabel(a))
+                        .compareToIgnoreCase(String.valueOf(pm.getApplicationLabel(b)));
+            }
+        });
+        if (candidates.isEmpty()) {
+            systemAppList.addView(makeText("Nenhum app de sistema opcional foi encontrado.", 13, Color.LTGRAY), matchWrap());
+            return;
+        }
+        for (ApplicationInfo app : candidates) {
+            CheckBox check = new CheckBox(this);
+            check.setText(String.valueOf(pm.getApplicationLabel(app)) + "\\n" + app.packageName);
+            check.setTextColor(Color.rgb(255, 220, 185));
+            check.setTextSize(13);
+            check.setTag(app.packageName);
+            check.setPadding(dp(2), dp(4), dp(2), dp(4));
+            systemAppList.addView(check, matchWrap());
+            systemAppChecks.add(check);
+        }
+    }
+
+    private void confirmCloseSelectedSystemApps() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("⚠️ Interromper apps de sistema?")
+                .setMessage("AVISO FORTE: você selecionou apps do sistema/fabricante. Mesmo com filtros de componentes essenciais, parar um deles pode desativar temporariamente recursos do telefone, causar erros ou fazer o app reiniciar. Nenhum app está pré-selecionado. Continue apenas se aceitar o risco.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("ENTENDO, CONTINUAR", (dialog, which) -> closeSelectedSystemApps())
+                .show();
+    }
+
+    private void closeSelectedSystemApps() {
+        if (!hasShizukuPermission()) return;
+        final Intent fclIntent = getPackageManager().getLaunchIntentForPackage(FCL_PACKAGE);
+        if (fclIntent == null) {
+            statusText.setText("FCL não encontrado: " + FCL_PACKAGE);
+            return;
+        }
+        final List<String> selected = new ArrayList<>();
+        for (CheckBox check : systemAppChecks) {
+            if (check.isChecked() && check.getTag() instanceof String) {
+                String pkg = (String) check.getTag();
+                if (pkg.matches("[A-Za-z0-9_.]+") && !pkg.equals(FCL_PACKAGE)
+                        && !pkg.equals(getPackageName()) && !isProtectedCorePackage(pkg)) {
+                    selected.add(pkg);
+                }
+            }
+        }
+        if (selected.isEmpty()) {
+            statusText.setText("Nenhum app de sistema foi selecionado.");
+            return;
+        }
+        statusText.setText("Tentando interromper " + selected.size() + " app(s) de sistema…");
+        setButtonsEnabled(false);
+        worker.execute(() -> {
+            int closed = 0;
+            List<String> errors = new ArrayList<>();
+            for (String pkg : selected) {
+                Process process = null;
+                try {
+                    process = Shizuku.newProcess(new String[]{"sh", "-c",
+                            "am force-stop --user current " + pkg + " 2>&1"}, null, null);
+                    String output = readProcessOutput(process.getInputStream());
+                    int exit = process.waitFor();
+                    if (exit == 0) closed++;
+                    else errors.add(pkg + (output.isEmpty() ? "" : ": " + output.trim()));
+                    process.destroy();
+                } catch (Exception e) {
+                    errors.add(pkg + ": " + e.getMessage());
+                    if (process != null) process.destroy();
+                }
+            }
+            final int count = closed;
+            final int total = selected.size();
+            final String errorText = errors.isEmpty() ? "" : "\\nFalhas: "
+                    + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
+            runOnUiThread(() -> {
+                setButtonsEnabled(true);
+                refreshMemory();
+                statusText.setText("Apps de sistema interrompidos: " + count + "/" + total
+                        + ". Abrindo FCL…" + errorText);
+                try {
+                    fclIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(fclIntent);
+                } catch (Exception e) {
+                    statusText.setText("Interrupção concluída: " + count + ". Falha ao abrir FCL: " + e.getMessage());
+                }
+            });
+        });
     }
 
     private void requestShizukuPermission() {
@@ -494,6 +648,7 @@ public class MainActivity extends Activity {
         if (processLimitButton != null) processLimitButton.setEnabled(enabled);
         if (restoreButton != null) restoreButton.setEnabled(enabled);
         if (closeAllButton != null) closeAllButton.setEnabled(enabled);
+        if (closeSelectedSystemButton != null) closeSelectedSystemButton.setEnabled(enabled);
     }
 
     private TextView makeText(String value, int size, int color) {
