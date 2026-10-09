@@ -7,12 +7,13 @@ App Android para Galaxy A12 / Android 12, com Shizuku sem root, focado em prepar
 - Verifica Shizuku e solicita autorização.
 - Lista apps comuns do usuário, excluindo apps do sistema, o próprio RAM Extreme e o FCL.
 - Permite selecionar apps para interromper via `am force-stop` antes de abrir o FCL.
+- Inclui botão separado para tentar interromper todos os apps de usuário de uma vez, com aviso e confirmação. Exclui o próprio RAM Extreme, o FCL e apps marcados como sistema; alguns apps protegidos podem não fechar.
 - Desativa as três escalas de animação do Android (0x) por comandos `settings put global`.
 - Oferece um limite agressivo de dois processos em segundo plano.
 - Restaura as animações para 1x e o limite de processos para o padrão (0).
 
 ## Atenção
-Interromper apps pode descartar trabalho não salvo. O limite de dois processos pode atrasar notificações, parar áudio/downloads e fazer apps recarregarem. Use **RESTAURAR CONFIGURAÇÕES PADRÃO** para restaurar animações e limite padrão. Se quiser apenas restaurar o limite, essa opção também o faz. Estas alterações são reversíveis e exigem Shizuku autorizado.
+A opção **FECHAR TODOS OS APPS DE USUÁRIO + ABRIR FCL** é agressiva: tenta fechar todos os apps comuns de usuário, mas não serviços essenciais nem apps identificados como sistema. Alguns apps do fabricante podem não fechar. Pode descartar trabalho não salvo. O limite de dois processos pode atrasar notificações, parar áudio/downloads e fazer apps recarregarem. Use **RESTAURAR CONFIGURAÇÕES PADRÃO** para restaurar animações e limite padrão. Se quiser apenas restaurar o limite, essa opção também o faz. Estas alterações são reversíveis e exigem Shizuku autorizado.
 
 Desativar animações melhora a rapidez visual, não aumenta diretamente os FPS do Minecraft. Limitar processos pode liberar alguma memória em certos casos, mas também pode piorar a experiência. O Android continua gerenciando a RAM; não existe garantia de ganho fixo de RAM/FPS. O app não altera kernel, voltagem, frequência de CPU/GPU ou limites térmicos.
 
