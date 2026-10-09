@@ -376,7 +376,7 @@ public class MainActivity extends Activity {
             for (String[] command : commands) {
                 Process process = null;
                 try {
-                    process = Shizuku.newProcess(command, null, null);
+                    process = Shizuku.newProcess(new String[]{"sh", "-c", String.join(" ", command) + " 2>&1"}, null, null);
                     String output = readProcessOutput(process.getInputStream());
                     int exit = process.waitFor();
                     if (exit == 0) {
@@ -392,7 +392,7 @@ public class MainActivity extends Activity {
             }
             final int applied = success;
             final int total = commands.length;
-            final String errorText = errors.isEmpty() ? "" : "\\nFalhas: "
+            final String errorText = errors.isEmpty() ? "" : "\nFalhas: "
                     + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
             runOnUiThread(() -> {
                 setButtonsEnabled(true);
