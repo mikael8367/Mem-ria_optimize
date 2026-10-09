@@ -3,7 +3,6 @@ package com.mikael.ramextreme;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -13,7 +12,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import rikka.shizuku.Shizuku;
-import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -73,7 +71,7 @@ public class MainActivity extends Activity {
         Button refresh = makeButton("ATUALIZAR MEMÓRIA");
         refresh.setOnClickListener(v -> refreshMemory());
         root.addView(refresh, buttonParams());
-        Button launch = makeButton("PREPARAR E ABRIR FCL");
+        Button launch = makeButton("ATIVAR MODO EXTREMO + ABRIR FCL");
         launch.setOnClickListener(v -> prepareAndLaunchFcl());
         root.addView(launch, buttonParams());
 
@@ -120,35 +118,39 @@ public class MainActivity extends Activity {
 
     private void prepareAndLaunchFcl() {
         refreshMemory();
-        updateShizukuStatus();
-        String pkg = findFclPackage();
-        if (pkg == null) {
-            statusText.setText("Não encontrei um app chamado FCL. Verifique se está instalado; a próxima versão permitirá informar o pacote manualmente.");
-            Toast.makeText(this, "FCL não encontrado", Toast.LENGTH_LONG).show();
-            return;
-        }
-        Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-        if (launch == null) {
-            statusText.setText("O pacote " + pkg + " não tem uma tela inicial disponível.");
-            return;
-        }
-        statusText.setText("FCL localizado: " + pkg + ". Abrindo. Nenhum processo foi encerrado.");
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(launch);
-    }
 
-    private String findFclPackage() {
+        // Target package is explicit: do not rely on the displayed app name.
+        final String packageName = "com.tungsten.fcl";
         PackageManager pm = getPackageManager();
+        Intent launch = pm.getLaunchIntentForPackage(packageName);
+
+        if (launch == null) {
+            statusText.setText("Não foi possível abrir " + packageName
+                    + ". Confirme que o FCL está instalado e que esse é o pacote correto.");
+            Toast.makeText(this, "FCL não encontrado: " + packageName, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        boolean shizukuConnected = Shizuku.pingBinder();
+        boolean shizukuAuthorized = shizukuConnected
+                && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+
+        if (shizukuAuthorized) {
+            statusText.setText("Modo extremo iniciado. Shizuku autorizado. Abrindo FCL ("
+                    + packageName + "). Esta versão ainda não encerra processos nem altera parâmetros do sistema.");
+        } else if (shizukuConnected) {
+            statusText.setText("Shizuku está conectado, mas ainda não autorizado. Abrindo FCL; toque em VERIFICAR / AUTORIZAR SHIZUKU para conceder acesso.");
+        } else {
+            statusText.setText("Shizuku não está ativo. Abrindo FCL sem ajustes privilegiados. Inicie Shizuku para habilitar as próximas funções.");
+        }
+
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
-            for (ApplicationInfo app : apps) {
-                CharSequence label = pm.getApplicationLabel(app);
-                String name = label == null ? "" : label.toString().toLowerCase(Locale.ROOT);
-                if ((name.contains("fcl") || name.contains("fold craft"))
-                        && pm.getLaunchIntentForPackage(app.packageName) != null) return app.packageName;
-            }
-        } catch (Exception ignored) { }
-        return null;
+            startActivity(launch);
+        } catch (Exception e) {
+            statusText.setText("Não consegui abrir o FCL: " + e.getMessage());
+            Toast.makeText(this, "Falha ao abrir o FCL", Toast.LENGTH_LONG).show();
+        }
     }
 
     private TextView makeText(String value, int size, int color) {
