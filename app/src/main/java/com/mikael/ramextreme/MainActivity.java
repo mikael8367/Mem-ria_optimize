@@ -427,9 +427,8 @@ public class MainActivity extends Activity {
             for (String pkg : packages) {
                 Process process = null;
                 try {
-                    process = Shizuku.newProcess(
-                            new String[]{"sh", "-c", "am force-stop --user current " + pkg + " 2>&1"},
-                            null, null);
+                    process = newShizukuProcess(
+                            new String[]{"sh", "-c", "am force-stop --user current " + pkg + " 2>&1"});
                     String output = readProcessOutput(process.getInputStream());
                     int exit = process.waitFor();
                     if (exit == 0) closed++;
