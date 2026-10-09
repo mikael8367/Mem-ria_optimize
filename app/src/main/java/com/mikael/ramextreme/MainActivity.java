@@ -148,6 +148,9 @@ public class MainActivity extends Activity {
         buildAppsPage(tabPages[1]);
         buildSystemPage(tabPages[2]);
         buildSettingsPage(tabPages[3]);
+
+        // Attach the constructed interface to the Activity before switching tabs.
+        setContentView(root);
         showTab(Math.max(0, Math.min(currentTab, tabPages.length - 1)));
     }
 
