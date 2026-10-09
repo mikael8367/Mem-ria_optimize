@@ -7,6 +7,13 @@ import android.content.DialogInterface;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.LinearGradient;
+import android.graphics.Shader;
+import android.view.View;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -26,6 +33,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -38,6 +47,11 @@ public class MainActivity extends Activity {
     private TextView shizukuText;
     private TextView statusText;
     private LinearLayout appList, systemAppList;
+    private LinearLayout contentFrame;
+    private LinearLayout[] tabPages;
+    private Button[] tabButtons;
+    private SharedPreferences preferences;
+    private int currentTab = 0;
     private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton, closeAllButton, closeSelectedSystemButton;
     private final List<CheckBox> appChecks = new ArrayList<>();
     private final List<CheckBox> systemAppChecks = new ArrayList<>();
@@ -60,6 +74,8 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.rgb(13, 23, 17));
         getWindow().setNavigationBarColor(Color.rgb(13, 23, 17));
+        preferences = getSharedPreferences("ram_extreme_settings", MODE_PRIVATE);
+        currentTab = preferences.getInt("last_tab", 0);
         Shizuku.addRequestPermissionResultListener(permissionListener);
         buildUi();
         refreshMemory();
@@ -69,120 +85,281 @@ public class MainActivity extends Activity {
     }
 
     private void buildUi() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
+        getWindow().setStatusBarColor(Color.rgb(8, 18, 13));
+        getWindow().setNavigationBarColor(Color.rgb(8, 18, 13));
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(24), dp(20), dp(24));
-        root.setBackgroundColor(Color.rgb(13, 23, 17));
+        root.setPadding(dp(14), dp(12), dp(14), dp(10));
+        root.setBackgroundColor(Color.rgb(8, 18, 13));
 
-        TextView title = makeText("RAM EXTREME", 27, Color.rgb(151, 245, 174));
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        root.addView(title, matchWrap());
+        HeroArtView cover = new HeroArtView(this);
+        LinearLayout.LayoutParams coverParams = matchWrap();
+        coverParams.bottomMargin = dp(10);
+        root.addView(cover, coverParams);
 
-        TextView subtitle = makeText("Preparador de desempenho para FCL", 14, Color.LTGRAY);
-        subtitle.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sub = matchWrap();
-        sub.bottomMargin = dp(20);
-        root.addView(subtitle, sub);
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setPadding(dp(3), dp(3), dp(3), dp(3));
+        tabs.setBackground(roundBackground(Color.rgb(20, 38, 28), dp(14)));
+        String[] names = {"Início", "Apps", "Sistema", "Ajustes"};
+        tabButtons = new Button[names.length];
+        tabPages = new LinearLayout[names.length];
+        for (int i = 0; i < names.length; i++) {
+            final int index = i;
+            Button tab = new Button(this);
+            tab.setText(names[i]);
+            tab.setAllCaps(false);
+            tab.setTextSize(12);
+            tab.setMinWidth(0);
+            tab.setPadding(dp(2), 0, dp(2), 0);
+            tab.setTextColor(Color.WHITE);
+            tab.setBackground(roundBackground(Color.TRANSPARENT, dp(10)));
+            LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, dp(44), 1f);
+            tabs.addView(tab, tp);
+            tabButtons[i] = tab;
+            tab.setOnClickListener(v -> showTab(index));
+        }
+        LinearLayout.LayoutParams tabsParams = matchWrap();
+        tabsParams.bottomMargin = dp(10);
+        root.addView(tabs, tabsParams);
+
+        contentFrame = new LinearLayout(this);
+        contentFrame.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+        root.addView(contentFrame, contentParams);
+
+        for (int i = 0; i < tabPages.length; i++) {
+            ScrollView pageScroll = new ScrollView(this);
+            pageScroll.setFillViewport(true);
+            pageScroll.setClipToPadding(false);
+            LinearLayout page = new LinearLayout(this);
+            page.setOrientation(LinearLayout.VERTICAL);
+            page.setPadding(dp(4), dp(4), dp(4), dp(24));
+            pageScroll.addView(page);
+            tabPages[i] = page;
+            contentFrame.addView(pageScroll, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+            pageScroll.setTag(page);
+        }
+
+        buildHomePage(tabPages[0]);
+        buildAppsPage(tabPages[1]);
+        buildSystemPage(tabPages[2]);
+        buildSettingsPage(tabPages[3]);
+        showTab(Math.max(0, Math.min(currentTab, tabPages.length - 1)));
+    }
+
+    private void buildHomePage(LinearLayout page) {
+        TextView welcome = makeText("PAINEL DE DESEMPENHO", 16, Color.rgb(151, 245, 174));
+        welcome.setTypeface(null, android.graphics.Typeface.BOLD);
+        page.addView(welcome, matchWrap());
 
         memoryText = makeText("RAM: medindo…", 17, Color.WHITE);
-        root.addView(memoryText, matchWrap());
+        memoryText.setPadding(dp(14), dp(12), dp(14), dp(12));
+        memoryText.setBackground(roundBackground(Color.rgb(20, 38, 28), dp(14)));
+        LinearLayout.LayoutParams mp = matchWrap();
+        mp.topMargin = dp(10);
+        page.addView(memoryText, mp);
 
         shizukuText = makeText("Shizuku: verificando…", 14, Color.LTGRAY);
         LinearLayout.LayoutParams sp = matchWrap();
         sp.topMargin = dp(10);
-        root.addView(shizukuText, sp);
-
-        TextView listTitle = makeText("APLICATIVOS PARA FECHAR ANTES DE JOGAR", 14,
-                Color.rgb(151, 245, 174));
-        LinearLayout.LayoutParams lt = matchWrap();
-        lt.topMargin = dp(22);
-        lt.bottomMargin = dp(6);
-        root.addView(listTitle, lt);
-
-        TextView hint = makeText("Marque somente apps que você aceita interromper. O FCL e apps do sistema são excluídos.", 12, Color.LTGRAY);
-        root.addView(hint, matchWrap());
-
-        appList = new LinearLayout(this);
-        appList.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams listParams = matchWrap();
-        listParams.topMargin = dp(8);
-        root.addView(appList, listParams);
-
-        statusText = makeText("Nenhum app foi fechado. Escolha os apps e ative o modo.", 13,
-                Color.rgb(190, 205, 193));
-        LinearLayout.LayoutParams statusParams = matchWrap();
-        statusParams.topMargin = dp(16);
-        statusParams.bottomMargin = dp(8);
-        root.addView(statusText, statusParams);
+        page.addView(shizukuText, sp);
 
         permissionButton = makeButton("VERIFICAR / AUTORIZAR SHIZUKU");
         permissionButton.setOnClickListener(v -> requestShizukuPermission());
-        root.addView(permissionButton, buttonParams());
+        page.addView(permissionButton, buttonParams());
 
         refreshButton = makeButton("ATUALIZAR MEMÓRIA");
         refreshButton.setOnClickListener(v -> refreshMemory());
-        root.addView(refreshButton, buttonParams());
+        page.addView(refreshButton, buttonParams());
 
         launchButton = makeButton("ATIVAR MODO EXTREMO + ABRIR FCL");
         launchButton.setOnClickListener(v -> activateExtremeMode());
-        root.addView(launchButton, buttonParams());
+        page.addView(launchButton, buttonParams());
+
+        statusText = makeText("Pronto. Escolha os aplicativos na aba Apps.", 13,
+                Color.rgb(190, 205, 193));
+        statusText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        statusText.setBackground(roundBackground(Color.rgb(17, 30, 22), dp(12)));
+        LinearLayout.LayoutParams statusParams = matchWrap();
+        statusParams.topMargin = dp(12);
+        page.addView(statusText, statusParams);
+
+        TextView note = makeText("Dica: o RAM Extreme salva automaticamente suas seleções. O modo extremo só roda quando você toca no botão.", 12, Color.GRAY);
+        LinearLayout.LayoutParams np = matchWrap();
+        np.topMargin = dp(14);
+        page.addView(note, np);
+    }
+
+    private void buildAppsPage(LinearLayout page) {
+        TextView title = makeText("APLICATIVOS DO USUÁRIO", 16, Color.rgb(151, 245, 174));
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        page.addView(title, matchWrap());
+        TextView hint = makeText("Marque os apps que aceita interromper antes de abrir o FCL. Suas escolhas ficam salvas automaticamente.", 12, Color.LTGRAY);
+        LinearLayout.LayoutParams hp = matchWrap();
+        hp.topMargin = dp(6);
+        page.addView(hint, hp);
+
+        appList = new LinearLayout(this);
+        appList.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams lp = matchWrap();
+        lp.topMargin = dp(8);
+        page.addView(appList, lp);
 
         closeAllButton = makeButton("FECHAR TODOS OS APPS DE USUÁRIO + ABRIR FCL");
         closeAllButton.setOnClickListener(v -> confirmCloseAllApps());
-        root.addView(closeAllButton, buttonParams());
+        page.addView(closeAllButton, buttonParams());
+    }
 
-        TextView advancedSystemTitle = makeText("APPS DO SISTEMA — AVANÇADO", 14,
-                Color.rgb(255, 190, 110));
-        LinearLayout.LayoutParams advancedParams = matchWrap();
-        advancedParams.topMargin = dp(24);
-        advancedParams.bottomMargin = dp(4);
-        root.addView(advancedSystemTitle, advancedParams);
+    private void buildSystemPage(LinearLayout page) {
+        TextView title = makeText("APPS DO SISTEMA — AVANÇADO", 16, Color.rgb(255, 190, 110));
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        page.addView(title, matchWrap());
 
-        TextView advancedSystemHint = makeText("Lista filtrada de apps de sistema com ícone de abertura. Nenhum fica marcado automaticamente. Mesmo assim, forçar parada pode quebrar funções temporariamente; componentes essenciais são excluídos da lista.", 12, Color.LTGRAY);
-        root.addView(advancedSystemHint, matchWrap());
+        TextView hint = makeText("Nenhum app fica marcado automaticamente. Forçar parada de apps do fabricante pode quebrar funções temporariamente. Componentes essenciais são filtrados, mas o filtro não é infalível.", 12, Color.LTGRAY);
+        LinearLayout.LayoutParams hp = matchWrap();
+        hp.topMargin = dp(6);
+        page.addView(hint, hp);
 
         systemAppList = new LinearLayout(this);
         systemAppList.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams systemListParams = matchWrap();
-        systemListParams.topMargin = dp(8);
-        root.addView(systemAppList, systemListParams);
+        LinearLayout.LayoutParams lp = matchWrap();
+        lp.topMargin = dp(8);
+        page.addView(systemAppList, lp);
 
         closeSelectedSystemButton = makeButton("TENTAR FECHAR SISTEMA SELECIONADO + ABRIR FCL");
         closeSelectedSystemButton.setOnClickListener(v -> confirmCloseSelectedSystemApps());
-        root.addView(closeSelectedSystemButton, buttonParams());
+        page.addView(closeSelectedSystemButton, buttonParams());
+    }
 
-        TextView systemTitle = makeText("AJUSTES DO ANDROID (REVERSÍVEIS)", 14,
-                Color.rgb(151, 245, 174));
-        LinearLayout.LayoutParams systemTitleParams = matchWrap();
-        systemTitleParams.topMargin = dp(24);
-        systemTitleParams.bottomMargin = dp(4);
-        root.addView(systemTitle, systemTitleParams);
+    private void buildSettingsPage(LinearLayout page) {
+        TextView title = makeText("AJUSTES DO ANDROID", 16, Color.rgb(151, 245, 174));
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        page.addView(title, matchWrap());
 
-        TextView systemHint = makeText("Estas opções alteram configurações globais via Shizuku. O limite de processos pode atrasar notificações ou recarregar apps.", 12, Color.LTGRAY);
-        root.addView(systemHint, matchWrap());
+        TextView hint = makeText("Essas opções alteram configurações globais via Shizuku. Limitar processos pode atrasar notificações, interromper áudio/downloads e fazer apps recarregarem.", 12, Color.LTGRAY);
+        LinearLayout.LayoutParams hp = matchWrap();
+        hp.topMargin = dp(6);
+        hp.bottomMargin = dp(4);
+        page.addView(hint, hp);
 
         animationsButton = makeButton("TURBO VISUAL: DESATIVAR ANIMAÇÕES");
         animationsButton.setOnClickListener(v -> runSystemSettingMode(true));
-        root.addView(animationsButton, buttonParams());
+        page.addView(animationsButton, buttonParams());
 
         processLimitButton = makeButton("MODO AGRESSIVO: LIMITAR APPS EM SEGUNDO PLANO");
         processLimitButton.setOnClickListener(v -> confirmProcessLimit());
-        root.addView(processLimitButton, buttonParams());
+        page.addView(processLimitButton, buttonParams());
 
         restoreButton = makeButton("RESTAURAR CONFIGURAÇÕES PADRÃO");
         restoreButton.setOnClickListener(v -> runSystemSettingMode(false));
-        root.addView(restoreButton, buttonParams());
+        page.addView(restoreButton, buttonParams());
 
-        TextView note = makeText("O modo extremo pode interromper apps selecionados e alterar animações/limite de processos do Android via Shizuku. Use restaurar para voltar às configurações padrão. Não altera kernel, voltagem ou temperatura.", 12, Color.GRAY);
+        TextView note = makeText("Desativar animações deixa as transições visuais mais rápidas, mas não aumenta diretamente os FPS do Minecraft. Não há garantia de ganho de RAM/FPS. O app não altera kernel, voltagem ou temperatura.", 12, Color.GRAY);
         LinearLayout.LayoutParams np = matchWrap();
         np.topMargin = dp(18);
-        root.addView(note, np);
+        page.addView(note, np);
+    }
 
-        scroll.addView(root);
-        setContentView(scroll);
+    private void showTab(int index) {
+        currentTab = index;
+        for (int i = 0; i < tabPages.length; i++) {
+            View pageScroll = contentFrame.getChildAt(i);
+            pageScroll.setVisibility(i == index ? View.VISIBLE : View.GONE);
+            tabButtons[i].setBackground(roundBackground(
+                    i == index ? Color.rgb(35, 105, 58) : Color.TRANSPARENT, dp(10)));
+            tabButtons[i].setTextColor(i == index ? Color.WHITE : Color.rgb(178, 198, 184));
+        }
+        if (preferences != null) preferences.edit().putInt("last_tab", index).apply();
+    }
+
+    private android.graphics.drawable.GradientDrawable roundBackground(int color, int radius) {
+        android.graphics.drawable.GradientDrawable drawable = new android.graphics.drawable.GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(radius);
+        return drawable;
+    }
+
+    private void saveSelections() {
+        if (preferences == null) return;
+        Set<String> selectedUser = new HashSet<>();
+        for (CheckBox check : appChecks) {
+            if (check.isChecked() && check.getTag() instanceof String) selectedUser.add((String) check.getTag());
+        }
+        Set<String> selectedSystem = new HashSet<>();
+        for (CheckBox check : systemAppChecks) {
+            if (check.isChecked() && check.getTag() instanceof String) selectedSystem.add((String) check.getTag());
+        }
+        preferences.edit()
+                .putStringSet("selected_user_apps", selectedUser)
+                .putStringSet("selected_system_apps", selectedSystem)
+                .putInt("last_tab", currentTab)
+                .apply();
+    }
+
+    private boolean wasSelected(String key, String packageName) {
+        Set<String> saved = preferences.getStringSet(key, new HashSet<>());
+        return saved != null && saved.contains(packageName);
+    }
+
+    private static class HeroArtView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        HeroArtView(Activity activity) {
+            super(activity);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float w = getWidth(), h = dpStatic(getContext(), 154);
+            paint.setShader(new LinearGradient(0, 0, w, h,
+                    Color.rgb(10, 42, 25), Color.rgb(16, 20, 24), Shader.TileMode.CLAMP));
+            canvas.drawRoundRect(new RectF(0, 0, w, h), dpStatic(getContext(), 18), dpStatic(getContext(), 18), paint);
+            paint.setShader(null);
+            paint.setColor(Color.argb(45, 80, 255, 130));
+            for (int i = 0; i < 5; i++) {
+                float x = w * (0.57f + i * 0.075f);
+                canvas.drawCircle(x, h * (0.18f + (i % 2) * 0.13f), dpStatic(getContext(), 2), paint);
+                canvas.drawLine(x, h * 0.24f, x - dpStatic(getContext(), 15), h * 0.38f, paint);
+            }
+            float cx = w * 0.73f, cy = h * 0.53f;
+            paint.setColor(Color.rgb(24, 89, 49));
+            canvas.drawRoundRect(new RectF(cx - 37, cy - 37, cx + 37, cy + 37), dpStatic(getContext(), 10), dpStatic(getContext(), 10), paint);
+            paint.setColor(Color.rgb(94, 235, 133));
+            canvas.drawRoundRect(new RectF(cx - 27, cy - 27, cx + 27, cy + 27), dpStatic(getContext(), 7), dpStatic(getContext(), 7), paint);
+            paint.setColor(Color.rgb(10, 42, 25));
+            canvas.drawRoundRect(new RectF(cx - 19, cy - 19, cx + 19, cy + 19), dpStatic(getContext(), 4), dpStatic(getContext(), 4), paint);
+            paint.setColor(Color.rgb(151, 245, 174));
+            paint.setStrokeWidth(dpStatic(getContext(), 3));
+            for (int i = -2; i <= 2; i++) {
+                float off = i * dpStatic(getContext(), 12);
+                canvas.drawLine(cx - 43, cy + off, cx - 34, cy + off, paint);
+                canvas.drawLine(cx + 34, cy + off, cx + 43, cy + off, paint);
+                canvas.drawLine(cx + off, cy - 43, cx + off, cy - 34, paint);
+                canvas.drawLine(cx + off, cy + 34, cx + off, cy + 43, paint);
+            }
+            paint.setStrokeWidth(dpStatic(getContext(), 2));
+            paint.setColor(Color.argb(150, 90, 240, 140));
+            canvas.drawLine(w * 0.48f, cy, cx - dpStatic(getContext(), 47), cy, paint);
+            canvas.drawLine(cx + dpStatic(getContext(), 47), cy, w * 0.94f, cy, paint);
+            paint.setColor(Color.WHITE);
+            paint.setTypeface(android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD));
+            paint.setTextSize(dpStatic(getContext(), 22));
+            canvas.drawText("RAM", dpStatic(getContext(), 16), dpStatic(getContext(), 43), paint);
+            canvas.drawText("EXTREME", dpStatic(getContext(), 16), dpStatic(getContext(), 68), paint);
+            paint.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL));
+            paint.setTextSize(dpStatic(getContext(), 11));
+            paint.setColor(Color.rgb(170, 218, 183));
+            canvas.drawText("PREPARAÇÃO PARA JOGAR", dpStatic(getContext(), 17), dpStatic(getContext(), 91), paint);
+            paint.setColor(Color.rgb(151, 245, 174));
+            canvas.drawRoundRect(new RectF(dpStatic(getContext(), 17), dpStatic(getContext(), 108),
+                    dpStatic(getContext(), 112), dpStatic(getContext(), 113)), dpStatic(getContext(), 3), dpStatic(getContext(), 3), paint);
+        }
+        private static int dpStatic(android.content.Context context, int value) {
+            return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
+        }
     }
 
     private void loadUserApps() {
@@ -220,6 +397,8 @@ public class MainActivity extends Activity {
             check.setTextSize(13);
             check.setTag(app.packageName);
             check.setPadding(dp(2), dp(4), dp(2), dp(4));
+            check.setChecked(wasSelected("selected_user_apps", app.packageName));
+            check.setOnCheckedChangeListener((button, checked) -> saveSelections());
             appList.addView(check, matchWrap());
             appChecks.add(check);
         }
@@ -283,6 +462,8 @@ public class MainActivity extends Activity {
             check.setTextSize(13);
             check.setTag(app.packageName);
             check.setPadding(dp(2), dp(4), dp(2), dp(4));
+            check.setChecked(wasSelected("selected_system_apps", app.packageName));
+            check.setOnCheckedChangeListener((button, checked) -> saveSelections());
             systemAppList.addView(check, matchWrap());
             systemAppChecks.add(check);
         }
@@ -656,6 +837,7 @@ public class MainActivity extends Activity {
         if (animationsButton != null) animationsButton.setEnabled(enabled);
         if (processLimitButton != null) processLimitButton.setEnabled(enabled);
         if (restoreButton != null) restoreButton.setEnabled(enabled);
+        if (tabButtons != null) for (Button tab : tabButtons) if (tab != null) tab.setEnabled(enabled);
         if (closeAllButton != null) closeAllButton.setEnabled(enabled);
         if (closeSelectedSystemButton != null) closeSelectedSystemButton.setEnabled(enabled);
     }
@@ -693,7 +875,13 @@ public class MainActivity extends Activity {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    @Override protected void onStop() {
+        saveSelections();
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
+        saveSelections();
         Shizuku.removeRequestPermissionResultListener(permissionListener);
         worker.shutdownNow();
         super.onDestroy();
