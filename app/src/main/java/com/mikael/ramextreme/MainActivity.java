@@ -18,6 +18,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -47,7 +48,7 @@ public class MainActivity extends Activity {
     private TextView shizukuText;
     private TextView statusText;
     private LinearLayout appList, systemAppList;
-    private LinearLayout contentFrame;
+    private FrameLayout contentFrame;
     private LinearLayout[] tabPages;
     private Button[] tabButtons;
     private SharedPreferences preferences;
@@ -124,8 +125,7 @@ public class MainActivity extends Activity {
         tabsParams.bottomMargin = dp(10);
         root.addView(tabs, tabsParams);
 
-        contentFrame = new LinearLayout(this);
-        contentFrame.setOrientation(LinearLayout.VERTICAL);
+        contentFrame = new FrameLayout(this);
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
         root.addView(contentFrame, contentParams);
@@ -139,8 +139,8 @@ public class MainActivity extends Activity {
             page.setPadding(dp(4), dp(4), dp(4), dp(24));
             pageScroll.addView(page);
             tabPages[i] = page;
-            contentFrame.addView(pageScroll, new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+            contentFrame.addView(pageScroll, new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
             pageScroll.setTag(page);
         }
 
@@ -310,6 +310,9 @@ public class MainActivity extends Activity {
         HeroArtView(Activity activity) {
             super(activity);
             setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+        @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), dpStatic(getContext(), 154));
         }
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
