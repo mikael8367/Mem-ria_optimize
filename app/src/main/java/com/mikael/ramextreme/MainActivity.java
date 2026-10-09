@@ -278,7 +278,7 @@ public class MainActivity extends Activity {
         }
         for (ApplicationInfo app : candidates) {
             CheckBox check = new CheckBox(this);
-            check.setText(String.valueOf(pm.getApplicationLabel(app)) + "\\n" + app.packageName);
+            check.setText(String.valueOf(pm.getApplicationLabel(app)) + "\n" + app.packageName);
             check.setTextColor(Color.rgb(255, 220, 185));
             check.setTextSize(13);
             check.setTag(app.packageName);
@@ -326,8 +326,8 @@ public class MainActivity extends Activity {
             for (String pkg : selected) {
                 Process process = null;
                 try {
-                    process = Shizuku.newProcess(new String[]{"sh", "-c",
-                            "am force-stop --user current " + pkg + " 2>&1"}, null, null);
+                    process = newShizukuProcess(new String[]{"sh", "-c",
+                            "am force-stop --user current " + pkg + " 2>&1"});
                     String output = readProcessOutput(process.getInputStream());
                     int exit = process.waitFor();
                     if (exit == 0) closed++;
@@ -340,7 +340,7 @@ public class MainActivity extends Activity {
             }
             final int count = closed;
             final int total = selected.size();
-            final String errorText = errors.isEmpty() ? "" : "\\nFalhas: "
+            final String errorText = errors.isEmpty() ? "" : "\nFalhas: "
                     + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
             runOnUiThread(() -> {
                 setButtonsEnabled(true);
@@ -505,7 +505,7 @@ public class MainActivity extends Activity {
             for (String pkg : selectedPackages) {
                 try {
                     String command = "am force-stop --user current " + pkg + " 2>&1";
-                    Process process = Shizuku.newProcess(new String[]{"sh", "-c", command}, null, null);
+                    Process process = newShizukuProcess(new String[]{"sh", "-c", command});
                     String output = readProcessOutput(process.getInputStream());
                     String error = readProcessOutput(process.getErrorStream());
                     int exit = process.waitFor();
@@ -602,7 +602,7 @@ public class MainActivity extends Activity {
             for (String[] command : commands) {
                 Process process = null;
                 try {
-                    process = Shizuku.newProcess(new String[]{"sh", "-c", String.join(" ", command) + " 2>&1"}, null, null);
+                    process = newShizukuProcess(new String[]{"sh", "-c", String.join(" ", command) + " 2>&1"});
                     String output = readProcessOutput(process.getInputStream());
                     int exit = process.waitFor();
                     if (exit == 0) {
@@ -627,6 +627,16 @@ public class MainActivity extends Activity {
                 refreshMemory();
             });
         });
+    }
+
+    // Shizuku API 13.1.5 still contains this private bridge; invoke it reflectively
+    // because the public API marks newProcess for removal. Keep the command list fixed
+    // by our own code and validate package names before inserting them.
+    private Process newShizukuProcess(String[] command) throws Exception {
+        java.lang.reflect.Method method = Shizuku.class.getDeclaredMethod(
+                "newProcess", String[].class, String[].class, String.class);
+        method.setAccessible(true);
+        return (Process) method.invoke(null, new Object[]{command, null, null});
     }
 
     private String readProcessOutput(InputStream stream) {
