@@ -37,6 +37,7 @@ public class MainActivity extends Activity {
     private TextView shizukuText;
     private TextView statusText;
     private LinearLayout appList;
+    private Button permissionButton, refreshButton, launchButton;
     private final List<CheckBox> appChecks = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -114,17 +115,17 @@ public class MainActivity extends Activity {
         statusParams.bottomMargin = dp(8);
         root.addView(statusText, statusParams);
 
-        Button permission = makeButton("VERIFICAR / AUTORIZAR SHIZUKU");
-        permission.setOnClickListener(v -> requestShizukuPermission());
-        root.addView(permission, buttonParams());
+        permissionButton = makeButton("VERIFICAR / AUTORIZAR SHIZUKU");
+        permissionButton.setOnClickListener(v -> requestShizukuPermission());
+        root.addView(permissionButton, buttonParams());
 
-        Button refresh = makeButton("ATUALIZAR MEMÓRIA");
-        refresh.setOnClickListener(v -> refreshMemory());
-        root.addView(refresh, buttonParams());
+        refreshButton = makeButton("ATUALIZAR MEMÓRIA");
+        refreshButton.setOnClickListener(v -> refreshMemory());
+        root.addView(refreshButton, buttonParams());
 
-        Button launch = makeButton("ATIVAR MODO EXTREMO + ABRIR FCL");
-        launch.setOnClickListener(v -> activateExtremeMode());
-        root.addView(launch, buttonParams());
+        launchButton = makeButton("ATIVAR MODO EXTREMO + ABRIR FCL");
+        launchButton.setOnClickListener(v -> activateExtremeMode());
+        root.addView(launchButton, buttonParams());
 
         TextView note = makeText("O modo extremo usa o Shizuku para solicitar force-stop somente nos apps comuns que você marcou. Isso pode fechar tarefas não salvas. A RAM livre e o FPS variam; não há garantia de aumento.", 12, Color.GRAY);
         LinearLayout.LayoutParams np = matchWrap();
@@ -165,7 +166,7 @@ public class MainActivity extends Activity {
         for (ApplicationInfo app : userApps) {
             String label = String.valueOf(pm.getApplicationLabel(app));
             CheckBox check = new CheckBox(this);
-            check.setText(label + "\\n" + app.packageName);
+            check.setText(label + "\n" + app.packageName);
             check.setTextColor(Color.WHITE);
             check.setTextSize(13);
             check.setTag(app.packageName);
@@ -206,7 +207,7 @@ public class MainActivity extends Activity {
         long available = info.availMem / (1024L * 1024L);
         long used = Math.max(0, total - available);
         memoryText.setText(String.format(Locale.getDefault(),
-                "RAM DO SISTEMA\\nTotal: %.2f GB\\nEm uso aprox.: %.2f GB\\nDisponível: %.2f GB",
+                "RAM DO SISTEMA\nTotal: %.2f GB\nEm uso aprox.: %.2f GB\nDisponível: %.2f GB",
                 total / 1024.0, used / 1024.0, available / 1024.0));
     }
 
@@ -273,13 +274,13 @@ public class MainActivity extends Activity {
 
             final int closed = success;
             final int requested = selectedPackages.size();
-            final String errorSummary = errors.isEmpty() ? "" : "\\nFalhas: "
+            final String errorSummary = errors.isEmpty() ? "" : "\nFalhas: "
                     + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
             runOnUiThread(() -> {
                 setButtonsEnabled(true);
                 refreshMemory();
                 statusText.setText("Modo extremo concluído: " + closed + "/" + requested
-                        + " app(s) interrompido(s)." + errorSummary + "\\nAbrindo FCL…");
+                        + " app(s) interrompido(s)." + errorSummary + "\nAbrindo FCL…");
                 try {
                     fclIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(fclIntent);
@@ -302,18 +303,9 @@ public class MainActivity extends Activity {
     }
 
     private void setButtonsEnabled(boolean enabled) {
-        // Keep app selection intact; only disable action buttons during work.
-        ViewGroup root = (ViewGroup) ((ScrollView) findViewById(android.R.id.content).getRootView()
-                .findViewById(android.R.id.content)).getChildAt(0);
-        setEnabledRecursive(root, enabled);
-    }
-
-    private void setEnabledRecursive(ViewGroup group, boolean enabled) {
-        for (int i = 0; i < group.getChildCount(); i++) {
-            android.view.View child = group.getChildAt(i);
-            if (child instanceof Button) child.setEnabled(enabled);
-            if (child instanceof ViewGroup) setEnabledRecursive((ViewGroup) child, enabled);
-        }
+        if (permissionButton != null) permissionButton.setEnabled(enabled);
+        if (refreshButton != null) refreshButton.setEnabled(enabled);
+        if (launchButton != null) launchButton.setEnabled(enabled);
     }
 
     private TextView makeText(String value, int size, int color) {
