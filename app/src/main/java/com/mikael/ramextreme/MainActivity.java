@@ -3,6 +3,7 @@ package com.mikael.ramextreme;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Intent;
+import android.content.DialogInterface;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -37,7 +38,7 @@ public class MainActivity extends Activity {
     private TextView shizukuText;
     private TextView statusText;
     private LinearLayout appList;
-    private Button permissionButton, refreshButton, launchButton;
+    private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton;
     private final List<CheckBox> appChecks = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -127,7 +128,29 @@ public class MainActivity extends Activity {
         launchButton.setOnClickListener(v -> activateExtremeMode());
         root.addView(launchButton, buttonParams());
 
-        TextView note = makeText("O modo extremo usa o Shizuku para solicitar force-stop somente nos apps comuns que você marcou. Isso pode fechar tarefas não salvas. A RAM livre e o FPS variam; não há garantia de aumento.", 12, Color.GRAY);
+        TextView systemTitle = makeText("AJUSTES DO ANDROID (REVERSÍVEIS)", 14,
+                Color.rgb(151, 245, 174));
+        LinearLayout.LayoutParams systemTitleParams = matchWrap();
+        systemTitleParams.topMargin = dp(24);
+        systemTitleParams.bottomMargin = dp(4);
+        root.addView(systemTitle, systemTitleParams);
+
+        TextView systemHint = makeText("Estas opções alteram configurações globais via Shizuku. O limite de processos pode atrasar notificações ou recarregar apps.", 12, Color.LTGRAY);
+        root.addView(systemHint, matchWrap());
+
+        animationsButton = makeButton("TURBO VISUAL: DESATIVAR ANIMAÇÕES");
+        animationsButton.setOnClickListener(v -> runSystemSettingMode(true));
+        root.addView(animationsButton, buttonParams());
+
+        processLimitButton = makeButton("MODO AGRESSIVO: LIMITAR APPS EM SEGUNDO PLANO");
+        processLimitButton.setOnClickListener(v -> confirmProcessLimit());
+        root.addView(processLimitButton, buttonParams());
+
+        restoreButton = makeButton("RESTAURAR CONFIGURAÇÕES PADRÃO");
+        restoreButton.setOnClickListener(v -> runSystemSettingMode(false));
+        root.addView(restoreButton, buttonParams());
+
+        TextView note = makeText("O modo extremo pode interromper apps selecionados e alterar animações/limite de processos do Android via Shizuku. Use restaurar para voltar às configurações padrão. Não altera kernel, voltagem ou temperatura.", 12, Color.GRAY);
         LinearLayout.LayoutParams np = matchWrap();
         np.topMargin = dp(18);
         root.addView(note, np);
@@ -291,6 +314,95 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void confirmProcessLimit() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Ativar limite agressivo?")
+                .setMessage("O Android será configurado para manter no máximo 2 processos em segundo plano. Isso pode interromper música, downloads, notificações e outros apps. Você pode restaurar o padrão aqui.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Ativar", (dialog, which) -> runProcessLimit())
+                .show();
+    }
+
+    private boolean hasShizukuPermission() {
+        if (!Shizuku.pingBinder()) {
+            updateShizukuStatus();
+            statusText.setText("Inicie o Shizuku pela Depuração sem fio e tente novamente.");
+            return false;
+        }
+        if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            statusText.setText("Autorize o RAM Extreme no Shizuku antes de alterar configurações.");
+            requestShizukuPermission();
+            return false;
+        }
+        return true;
+    }
+
+    private void runSystemSettingMode(boolean extreme) {
+        if (!hasShizukuPermission()) return;
+        String[][] commands = extreme
+                ? new String[][]{
+                    {"settings", "put", "global", "window_animation_scale", "0"},
+                    {"settings", "put", "global", "transition_animation_scale", "0"},
+                    {"settings", "put", "global", "animator_duration_scale", "0"}
+                }
+                : new String[][]{
+                    {"settings", "put", "global", "window_animation_scale", "1"},
+                    {"settings", "put", "global", "transition_animation_scale", "1"},
+                    {"settings", "put", "global", "animator_duration_scale", "1"},
+                    {"settings", "put", "global", "background_process_limit", "0"}
+                };
+        runCommands(commands, extreme
+                ? "Desativando animações do Android…"
+                : "Restaurando animações e limite padrão…",
+                extreme
+                ? "Animações desativadas. Isso deixa transições mais rápidas, mas não aumenta diretamente o FPS do Minecraft."
+                : "Animações restauradas para 1x e limite de processos em segundo plano restaurado para padrão (0).");
+    }
+
+    private void runProcessLimit() {
+        if (!hasShizukuPermission()) return;
+        runCommands(new String[][]{
+                {"settings", "put", "global", "background_process_limit", "2"}
+        }, "Aplicando limite de processos em segundo plano…",
+                "Limite configurado para 2 processos em segundo plano. Se algum app parar de funcionar corretamente, toque em RESTAURAR CONFIGURAÇÕES PADRÃO.");
+    }
+
+    private void runCommands(String[][] commands, String progress, String successMessage) {
+        statusText.setText(progress);
+        setButtonsEnabled(false);
+        worker.execute(() -> {
+            List<String> errors = new ArrayList<>();
+            int success = 0;
+            for (String[] command : commands) {
+                Process process = null;
+                try {
+                    process = Shizuku.newProcess(command, null, null);
+                    String output = readProcessOutput(process.getInputStream());
+                    int exit = process.waitFor();
+                    if (exit == 0) {
+                        success++;
+                    } else {
+                        errors.add(String.join(" ", command) + (output.isEmpty() ? "" : ": " + output.trim()));
+                    }
+                    process.destroy();
+                } catch (Exception e) {
+                    errors.add(String.join(" ", command) + ": " + e.getMessage());
+                    if (process != null) process.destroy();
+                }
+            }
+            final int applied = success;
+            final int total = commands.length;
+            final String errorText = errors.isEmpty() ? "" : "\\nFalhas: "
+                    + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
+            runOnUiThread(() -> {
+                setButtonsEnabled(true);
+                statusText.setText(applied + "/" + total + " comandos aplicados. "
+                        + (errors.isEmpty() ? successMessage : "Confira as falhas reportadas.") + errorText);
+                refreshMemory();
+            });
+        });
+    }
+
     private String readProcessOutput(InputStream stream) {
         try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[1024];
@@ -306,6 +418,9 @@ public class MainActivity extends Activity {
         if (permissionButton != null) permissionButton.setEnabled(enabled);
         if (refreshButton != null) refreshButton.setEnabled(enabled);
         if (launchButton != null) launchButton.setEnabled(enabled);
+        if (animationsButton != null) animationsButton.setEnabled(enabled);
+        if (processLimitButton != null) processLimitButton.setEnabled(enabled);
+        if (restoreButton != null) restoreButton.setEnabled(enabled);
     }
 
     private TextView makeText(String value, int size, int color) {
