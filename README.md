@@ -3,6 +3,9 @@
 App Android para Galaxy A12 / Android 12, com Shizuku sem root, focado em preparar o aparelho antes de abrir FCL (`com.tungsten.fcl`).
 
 ## Funcionalidades
+- Interface reorganizada em quatro abas: Início, Apps, Sistema e Ajustes.
+- Capa gráfica local em verde/preto, sem depender de conexão com a internet.
+- Salva automaticamente os aplicativos selecionados e a última aba usada ao sair/retomar o app.
 - Mostra RAM total, uso aproximado e disponível.
 - Verifica Shizuku e solicita autorização.
 - Lista apps comuns do usuário, excluindo apps do sistema, o próprio RAM Extreme e o FCL.
