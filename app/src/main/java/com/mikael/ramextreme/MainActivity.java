@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
     private TextView shizukuText;
     private TextView statusText;
     private LinearLayout appList;
-    private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton;
+    private Button permissionButton, refreshButton, launchButton, animationsButton, processLimitButton, restoreButton, closeAllButton;
     private final List<CheckBox> appChecks = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -127,6 +127,10 @@ public class MainActivity extends Activity {
         launchButton = makeButton("ATIVAR MODO EXTREMO + ABRIR FCL");
         launchButton.setOnClickListener(v -> activateExtremeMode());
         root.addView(launchButton, buttonParams());
+
+        closeAllButton = makeButton("FECHAR TODOS OS APPS DE USUÁRIO + ABRIR FCL");
+        closeAllButton.setOnClickListener(v -> confirmCloseAllApps());
+        root.addView(closeAllButton, buttonParams());
 
         TextView systemTitle = makeText("AJUSTES DO ANDROID (REVERSÍVEIS)", 14,
                 Color.rgb(151, 245, 174));
@@ -232,6 +236,74 @@ public class MainActivity extends Activity {
         memoryText.setText(String.format(Locale.getDefault(),
                 "RAM DO SISTEMA\nTotal: %.2f GB\nEm uso aprox.: %.2f GB\nDisponível: %.2f GB",
                 total / 1024.0, used / 1024.0, available / 1024.0));
+    }
+
+    private void confirmCloseAllApps() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("⚠️ Fechar todos os aplicativos?")
+                .setMessage("AVISO: isso tentará forçar o fechamento de TODOS os aplicativos de usuário que o Android listar, exceto o RAM Extreme e o FCL. Você pode perder dados não salvos; música, downloads, alarmes de apps, sincronização e notificações podem parar. Alguns apps protegidos pelo Android ou pelo fabricante podem não fechar. O sistema e os serviços essenciais serão preservados. Deseja continuar?")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("SIM, FECHAR TODOS", (dialog, which) -> closeAllUserApps())
+                .show();
+    }
+
+    private void closeAllUserApps() {
+        if (!hasShizukuPermission()) return;
+        final Intent fclIntent = getPackageManager().getLaunchIntentForPackage(FCL_PACKAGE);
+        if (fclIntent == null) {
+            statusText.setText("FCL não encontrado: " + FCL_PACKAGE);
+            return;
+        }
+
+        PackageManager pm = getPackageManager();
+        List<ApplicationInfo> installed = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+        List<String> packages = new ArrayList<>();
+        for (ApplicationInfo app : installed) {
+            if (app.packageName.equals(getPackageName()) || app.packageName.equals(FCL_PACKAGE)) continue;
+            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+            if (pm.getLaunchIntentForPackage(app.packageName) == null) continue;
+            if (app.packageName.matches("[A-Za-z0-9_.]+")) packages.add(app.packageName);
+        }
+
+        statusText.setText("Fechando " + packages.size() + " apps de usuário. Aguarde…");
+        setButtonsEnabled(false);
+        worker.execute(() -> {
+            int closed = 0;
+            List<String> errors = new ArrayList<>();
+            for (String pkg : packages) {
+                Process process = null;
+                try {
+                    process = Shizuku.newProcess(
+                            new String[]{"sh", "-c", "am force-stop --user current " + pkg + " 2>&1"},
+                            null, null);
+                    String output = readProcessOutput(process.getInputStream());
+                    int exit = process.waitFor();
+                    if (exit == 0) closed++;
+                    else errors.add(pkg + (output.isEmpty() ? "" : ": " + output.trim()));
+                    process.destroy();
+                } catch (Exception e) {
+                    errors.add(pkg + ": " + e.getMessage());
+                    if (process != null) process.destroy();
+                }
+            }
+
+            final int closedCount = closed;
+            final int total = packages.size();
+            final String errorText = errors.isEmpty() ? "" : "\nAlgumas falhas: "
+                    + String.join("; ", errors.subList(0, Math.min(3, errors.size())));
+            runOnUiThread(() -> {
+                setButtonsEnabled(true);
+                refreshMemory();
+                statusText.setText("Fechamento em massa concluído: " + closedCount + "/" + total
+                        + " apps interrompidos." + errorText + "\nAbrindo FCL…");
+                try {
+                    fclIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(fclIntent);
+                } catch (Exception e) {
+                    statusText.setText("Apps interrompidos: " + closedCount + ". Falha ao abrir FCL: " + e.getMessage());
+                }
+            });
+        });
     }
 
     private void activateExtremeMode() {
@@ -421,6 +493,7 @@ public class MainActivity extends Activity {
         if (animationsButton != null) animationsButton.setEnabled(enabled);
         if (processLimitButton != null) processLimitButton.setEnabled(enabled);
         if (restoreButton != null) restoreButton.setEnabled(enabled);
+        if (closeAllButton != null) closeAllButton.setEnabled(enabled);
     }
 
     private TextView makeText(String value, int size, int color) {
