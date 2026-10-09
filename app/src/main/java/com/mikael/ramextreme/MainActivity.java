@@ -255,7 +255,7 @@ public class MainActivity extends Activity {
             List<String> errors = new ArrayList<>();
             for (String pkg : selectedPackages) {
                 try {
-                    String command = "am force-stop --user current " + pkg;
+                    String command = "am force-stop --user current " + pkg + " 2>&1";
                     Process process = Shizuku.newProcess(new String[]{"sh", "-c", command}, null, null);
                     String output = readProcessOutput(process.getInputStream());
                     String error = readProcessOutput(process.getErrorStream());
